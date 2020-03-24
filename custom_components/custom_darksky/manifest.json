@@ -1,0 +1,8 @@
+{
+  "domain": "custom_darksky",
+  "name": "Dark Sky",
+  "documentation": "https://www.home-assistant.io/integrations/darksky",
+  "requirements": ["darksky_weather==1.8.0"],
+  "dependencies": ["http"],
+  "codeowners": ["@thrilleratplay"]
+}

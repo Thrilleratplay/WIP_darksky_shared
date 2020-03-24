@@ -1,0 +1,17 @@
+custom_darksky:
+  api_key: DARKSKY_API_KEY
+
+weather:
+  - platform: custom_darksky
+
+
+sensor:
+  - platform: custom_darksky
+    forecast:
+      - 0
+    hourly_forecast:
+      - 0
+      - 1
+    monitored_conditions:
+      - summary
+      - temperature
