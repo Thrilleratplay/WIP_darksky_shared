@@ -1,23 +1,25 @@
 """Support for the Dark Sky weather service."""
+import voluptuous as vol
+import logging
+from darksky.api import DarkSkyAsync  # pylint: disable=import-error
+from darksky.types import languages, units  # pylint: disable=import-error
+
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, CONF_LATITUDE, CONF_LONGITUDE
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
-
-from darksky.api import DarkSkyAsync
-from darksky.types import languages, units
-
-import voluptuous as vol
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    _LOGGER,
     CONF_LANGUAGE,
     CONF_UNITS,
     DARKSKY_PLATFORMS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
 )
+from .shared import format_daily_forecast, format_hourly_forecast
+
+_LOGGER = logging.getLogger(__name__)
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -37,35 +39,28 @@ CONFIG_SCHEMA = vol.Schema(
 )
 
 
-# async def async_setup_entry(hass: HomeAssistant, config: Config) -> bool:
-#     # We allow setup only through config
-#     return True
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigEntry) -> bool:
-    _LOGGER.error("async setup entry")
-    darksky = DarkSkyData(hass, config)
-    """Set up darksky forecast as config entry."""
-
-    async def async_update_data():
-        """Fetch data from API endpoint."""
-        return await darksky.async_request_refresh()
-
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="Darksky Api Data",
-        update_method=async_update_data,
-        update_interval=DEFAULT_SCAN_INTERVAL,
-    )
-
-    await coordinator.async_refresh()
-    hass.data[DOMAIN] = coordinator
-
+async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry) -> bool:
+    """Set up Darksky as config entries."""
     for component in DARKSKY_PLATFORMS:
         hass.async_create_task(
             hass.config_entries.async_forward_entry_setup(config, component)
         )
+    return True
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigEntry):
+    """Set up configured Darksky."""
+    darksky = DarkSkyData(hass, config)
+
+    hass.data[DOMAIN] = DataUpdateCoordinator(
+        hass,
+        _LOGGER,
+        name="Darksky Api Data",
+        update_method=darksky.async_request_refresh,
+        update_interval=DEFAULT_SCAN_INTERVAL,
+    )
+
+    await hass.data[DOMAIN].async_refresh()
 
     return True
 
@@ -80,31 +75,37 @@ async def async_unload_entry(hass: HomeAssistant, config: ConfigEntry) -> bool:
 
 
 class DarkSkyData:
+    """DarkSky API request."""
+
     def __init__(self, hass, config):
         """Initialize the data object."""
-        self._hass = hass
+        lat = config[DOMAIN].get(CONF_LATITUDE, hass.config.latitude)
+        long = config[DOMAIN].get(CONF_LONGITUDE, hass.config.longitude)
 
+        self._hass = hass
         self._darksky = DarkSkyAsync(config[DOMAIN][CONF_API_KEY])
         self._units = config[DOMAIN].get(CONF_UNITS)
+        self._latitude = lat
+        self._longitude = long
+        self._language = config[DOMAIN][CONF_LANGUAGE]
 
         if self._units is None and hass.config.units.is_metric:
             self._units = units.SI
         elif self._units is None:
             self._units = units.US
 
-        lat = config[DOMAIN].get(CONF_LATITUDE, hass.config.latitude)
-        long = config[DOMAIN].get(CONF_LONGITUDE, hass.config.longitude)
-
-        self._latitude = lat
-        self._longitude = long
-        self._language = config[DOMAIN][CONF_LANGUAGE]
-
     async def async_request_refresh(self):
-        """Get the latest data from Dark Sky"""
-        _LOGGER.error("calling dark sky")
-        return await self._darksky.get_forecast(
-            self._latitude,
-            self._longitude,
-            lang=self._language,
-            values_units=self._units,
-        )
+        """Get the latest data from Dark Sky."""
+        try:
+            res = await self._darksky.get_forecast(
+                self._latitude,
+                self._longitude,
+                lang=self._language,
+                values_units=self._units,
+            )
+            res.ha_daily_forecast = format_daily_forecast(res.daily.data)
+            res.ha_hourly_forecast = format_hourly_forecast(res.hourly.data)
+            res.units = res.flags.units
+            return res
+        except LookupError:
+            raise UpdateFailed("Failed to fetch data")

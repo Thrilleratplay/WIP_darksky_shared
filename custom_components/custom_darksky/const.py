@@ -1,45 +1,22 @@
-import logging
 from datetime import timedelta
 
-_LOGGER = logging.getLogger(__name__)
-
-ATTRIBUTION = "Powered by Dark Sky"
-
 DEFAULT_NAME = "Custom Dark Sky"
-
-DOMAIN = "custom_darksky"
-DATA_DARKSKY_CONFIG = "darksky_config"
-
-DARKSKY_PLATFORMS = ["sensor", "weather"]
-
-MAP_CONDITION = {
-    "clear-day": "sunny",
-    "clear-night": "clear-night",
-    "rain": "rainy",
-    "snow": "snowy",
-    "sleet": "snowy-rainy",
-    "wind": "windy",
-    "fog": "fog",
-    "cloudy": "cloudy",
-    "partly-cloudy-day": "partlycloudy",
-    "partly-cloudy-night": "partlycloudy",
-    "hail": "hail",
-    "thunderstorm": "lightning",
-    "tornado": None,
-}
-
 DEFAULT_SCAN_INTERVAL = timedelta(minutes=3)
+DEFAULT_MODE = "hourly"
 
 ATTRIBUTION = "Powered by Dark Sky"
+
+ALERTS_ATTRS = ["time", "description", "expires", "severity", "uri", "regions", "title"]
 
 CONF_FORECAST = "forecast"
 CONF_HOURLY_FORECAST = "hourly_forecast"
 CONF_LANGUAGE = "language"
 CONF_UNITS = "units"
 
-DEFAULT_NAME = "Custom Dark Sky"
+DOMAIN = "custom_darksky"
 
-DEFAULT_MODE = "hourly"
+DARKSKY_PLATFORMS = ("sensor", "weather")
+
 FORECAST_MODE = ["hourly", "daily"]
 
 DEPRECATED_SENSOR_TYPES = {
@@ -48,8 +25,6 @@ DEPRECATED_SENSOR_TYPES = {
     "temperature_max",
     "temperature_min",
 }
-
-ALERTS_ATTRS = ["time", "description", "expires", "severity", "uri", "regions", "title"]
 
 SENSOR_LABELS = {
     "alerts": "Alerts",
@@ -227,4 +202,20 @@ ICONS = {
     "wind_gust": "mdi:weather-windy-variant",
     "wind_speed": "mdi:weather-windy",
     "wind": "mdi:weather-windy",
+}
+
+MAP_CONDITION = {
+    "clear-day": "sunny",
+    "clear-night": "clear-night",
+    "rain": "rainy",
+    "snow": "snowy",
+    "sleet": "snowy-rainy",
+    "wind": "windy",
+    "fog": "fog",
+    "cloudy": "cloudy",
+    "partly-cloudy-day": "partlycloudy",
+    "partly-cloudy-night": "partlycloudy",
+    "hail": "hail",
+    "thunderstorm": "lightning",
+    "tornado": None,
 }

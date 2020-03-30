@@ -1,32 +1,21 @@
 """Support for displaying weather info from Dark Sky API."""
 import voluptuous as vol
-from homeassistant.util.pressure import convert as convert_pressure
-import homeassistant.helpers.config_validation as cv
+import logging
+from darksky.types import units  # pylint: disable=import-error
 
+import homeassistant.helpers.config_validation as cv
 from homeassistant.components.weather import (
-    ATTR_FORECAST_CONDITION,
-    ATTR_FORECAST_PRECIPITATION,
-    ATTR_FORECAST_TEMP,
-    ATTR_FORECAST_TEMP_LOW,
-    ATTR_FORECAST_TIME,
-    ATTR_FORECAST_WIND_BEARING,
-    ATTR_FORECAST_WIND_SPEED,
     PLATFORM_SCHEMA,
     WeatherEntity,
 )
 from homeassistant.const import (
     CONF_MODE,
     CONF_NAME,
-    PRESSURE_HPA,
-    PRESSURE_INHG,
     TEMP_CELSIUS,
     TEMP_FAHRENHEIT,
 )
 
-from darksky.types import units
-
 from .const import (
-    _LOGGER,
     DEFAULT_NAME,
     DEFAULT_MODE,
     DOMAIN,
@@ -34,6 +23,9 @@ from .const import (
     ATTRIBUTION,
     MAP_CONDITION,
 )
+from .shared import imperial_pressure
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -45,15 +37,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
     """Set up the Dark Sky weather platform."""
-    data = hass.data[DOMAIN]
-
-    async_add_entities([DarkSkyWeather(data, config[CONF_MODE])], True)
-
+    coordinator = hass.data[DOMAIN]
+    mode = config[CONF_MODE]
+    async_add_entities([DarkSkyWeather(coordinator, mode)], True)
     return True
-
-
-def imperial_pressure(pressure):
-    return round(convert_pressure(pressure, PRESSURE_HPA, PRESSURE_INHG), 2)
 
 
 class DarkSkyWeather(WeatherEntity):
@@ -65,13 +52,10 @@ class DarkSkyWeather(WeatherEntity):
         _LOGGER.debug("Initializing DarkSky Weather sensor")
 
         self._name = DEFAULT_NAME
-        self._coordinator = coordinator
         self._mode = mode
-
+        self._coordinator = coordinator
         self._currently = coordinator.data.currently
-        self._hourly = coordinator.data.hourly
-        self._daily = coordinator.data.daily
-        self._flags = coordinator.data.flags
+        self._units = coordinator.data.units
 
     @property
     def available(self):
@@ -96,10 +80,9 @@ class DarkSkyWeather(WeatherEntity):
     @property
     def temperature_unit(self):
         """Return the unit of measurement."""
-        if self._flags.units == units.US:
+        if self._units == units.US:
             return TEMP_FAHRENHEIT
-        else:
-            return TEMP_CELSIUS
+        return TEMP_CELSIUS
 
     @property
     def humidity(self):
@@ -125,10 +108,9 @@ class DarkSkyWeather(WeatherEntity):
     @property
     def pressure(self):
         """Return the pressure."""
-        if self._flags.units == units.US:
+        if self._units == units.US:
             return imperial_pressure(self._currently.pressure)
-        else:
-            return self._currently.pressure
+        return self._currently.pressure
 
     @property
     def visibility(self):
@@ -145,12 +127,20 @@ class DarkSkyWeather(WeatherEntity):
         """Return False, updates are controlled via coordinator."""
         return False
 
-    async def async_update(self):
-        """Update the entity.
+    @property
+    def unique_id(self):
+        """Return unique ID."""
+        return f"{self._name}_weather"
 
-        Only used by the generic entity update service.
-        """
-        await self._coordinator.update_method()
+    @property
+    def forecast(self):
+        """Return the forecast array."""
+        if self._mode == "hourly":
+            return self._coordinator.data.ha_hourly_forecast
+        if self._mode == "daily":
+            return self._coordinator.data.ha_daily_forecast
+
+        return None
 
     async def async_added_to_hass(self):
         """Subscribe to updates."""
@@ -159,47 +149,3 @@ class DarkSkyWeather(WeatherEntity):
     async def async_will_remove_from_hass(self):
         """Undo subscription."""
         self._coordinator.async_remove_listener(self.async_write_ha_state)
-
-    @property
-    def forecast(self):
-        """Return the forecast array."""
-        # Per conversation with Joshua Reyes of Dark Sky, to get the total
-        # forecasted precipitation, you have to multiple the intensity by
-        # the hours for the forecast interval
-        def calc_precipitation(intensity, hours):
-            amount = None
-            if intensity is not None:
-                amount = round((intensity * hours), 1)
-            return amount if amount > 0 else None
-
-        data = None
-
-        if self._mode == "daily" and self._daily.data is not None:
-            data = [
-                {
-                    ATTR_FORECAST_TIME: entry.time.isoformat(),
-                    ATTR_FORECAST_TEMP: entry.temperature_high,
-                    ATTR_FORECAST_TEMP_LOW: entry.temperature_low,
-                    ATTR_FORECAST_PRECIPITATION: calc_precipitation(
-                        entry.precip_intensity, 24
-                    ),
-                    ATTR_FORECAST_WIND_SPEED: entry.wind_speed,
-                    ATTR_FORECAST_WIND_BEARING: entry.wind_bearing,
-                    ATTR_FORECAST_CONDITION: MAP_CONDITION.get(entry.icon),
-                }
-                for entry in self._daily.data
-            ]
-        elif self._mode == "hourly" and self._hourly.data is not None:
-            data = [
-                {
-                    ATTR_FORECAST_TIME: entry.time.isoformat(),
-                    ATTR_FORECAST_TEMP: entry.temperature,
-                    ATTR_FORECAST_PRECIPITATION: calc_precipitation(
-                        entry.precip_intensity, 1
-                    ),
-                    ATTR_FORECAST_CONDITION: MAP_CONDITION.get(entry.icon),
-                }
-                for entry in self._hourly.data
-            ]
-
-        return data
